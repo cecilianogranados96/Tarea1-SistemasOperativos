@@ -4,103 +4,75 @@
 #include <time.h>
 #include <pthread.h>
 
-struct Params
-{
-    int *start;
-    size_t len;
-    int depth;
+struct parametros{
+    int *inicio;
+    size_t tamano;
+    int profundidad;
 };
 
-// only used for synchronizing stdout from overlap.
-pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
+void *ordenar_hilos(void *pv);
 
-// forward declare our thread proc
-void *merge_sort_thread(void *pv);
-
-// a simple merge algorithm. there are *several* more efficient ways
-//  of doing this, but the purpose of this exercise is to establish
-//  merge-threading, so we stick with simple for now.
-void merge(int *start, int *mid, int *end)
-{
-    int *res = malloc((end - start)*sizeof(*res));
-    int *lhs = start, *rhs = mid, *dst = res;
-    while (lhs != mid && rhs != end)
+//FUNCION DE MERGE BASICA
+void merge(int *inicio, int *mid, int *fin){
+    int *res = malloc((fin - inicio)*sizeof(*res));
+    int *lhs = inicio, *rhs = mid, *dst = res;
+    while (lhs != mid && rhs != fin)
         *dst++ = (*lhs < *rhs) ? *lhs++ : *rhs++;
     while (lhs != mid)
         *dst++ = *lhs++;
-    // copy results
-    memcpy(start, res, (rhs - start) * sizeof *res);
+    memcpy(inicio, res, (rhs - inicio) * sizeof *res);
     free(res);
 }
 
-// our multi-threaded entry point.
-void merge_sort_mt(int *start, size_t len, int depth)
-{
-    if (len < 2)
+//METODO DE MULTIHILO TIENE UNA PROFUNDIDAD DADA
+void ordenar_generando_hilos(int *inicio, size_t tamano, int profundidad){
+    if (tamano < 2)
         return;
-
-    if (depth <= 0 || len < 4)
-    {
-        merge_sort_mt(start, len/2, 0);
-        merge_sort_mt(start+len/2, len-len/2, 0);
+    if (profundidad <= 0 || tamano < 4){
+        ordenar_generando_hilos(inicio, tamano/2, 0);
+        ordenar_generando_hilos(inicio+tamano/2, tamano-tamano/2, 0);
     }else{
-        struct Params params = { start, len/2, depth/2 };
+        struct parametros params = { inicio, tamano/2, profundidad/2 };
         pthread_t thrd;
-        pthread_mutex_lock(&mtx);
-        printf("Starting subthread...\n");
-        pthread_mutex_unlock(&mtx);
-        // create our thread
-        pthread_create(&thrd, NULL, merge_sort_thread, &params);
-        // recurse into our top-end parition
-        merge_sort_mt(start+len/2, len-len/2, depth/2);
-        // join on the launched thread
-        pthread_join(thrd, NULL);
-        pthread_mutex_lock(&mtx);
-        printf("Finished subthread.\n");
-        pthread_mutex_unlock(&mtx);
+        printf("Inicio del hilo...\n");
+        pthread_create(&thrd, NULL, ordenar_hilos, &params);  // CREA EL HILO MANDANDO PARAMETROS LA FUNCION
+        ordenar_generando_hilos(inicio+tamano/2, tamano-tamano/2, profundidad/2); // Llamada recursiva en el orden del hilo
+        pthread_join(thrd, NULL);  // Cuando termina se une al hilo principal
+        printf("Fin del subhilo.\n");
     }
-    // merge the partitions.
-    merge(start, start+len/2, start+len);
+    merge(inicio, inicio+tamano/2, inicio+tamano);
 }
 
-// our thread-proc that invokes merge_sort. this just passes the
-//  given parameters off to our merge_sort algorithm
-void *merge_sort_thread(void *pv)
+//LLAMA ALA FUNCION REAL CON LOS PARAMETROS ES LA UNICA FORMA DE LLAMARLO
+void *ordenar_hilos(void *pv)
 {
-    struct Params *params = pv;
-    merge_sort_mt(params->start, params->len, params->depth);
+    struct parametros *params = pv;
+    ordenar_generando_hilos(params->inicio, params->tamano, params->profundidad);
     return pv;
 }
 
-// public-facing api
-void merge_sort(int *start, size_t len)
-{
-    merge_sort_mt(start, len, 4); // 4 is a nice number, will use 7 threads.
-}
-
-int main()
-{
-    static const unsigned int N = 2048;
-    int *data = malloc(N * sizeof(*data));
-    unsigned int i;
+int main(){
+    int cantidad = 2048;
+    
+    int *datos = malloc(cantidad * sizeof(*datos));
     srand((unsigned)time(0));
-    for (i=0; i<N; ++i)
-    {
-        data[i] = rand() % 1024;
-        printf("%4d ", data[i]);
-        if ((i+1)%8 == 0)
+    
+    for (int i=0; i<cantidad; i++){
+        datos[i] = rand() % 1024;
+        printf("%4d \t", datos[i]);
+        if ((i+1)%9 == 0)
             printf("\n");
     }
     printf("\n");
-    // invoke our multi-threaded merge-sort
-    merge_sort(data, N);
-    for (i=0; i<N; ++i)
-    {
-        printf("%4d ", data[i]);
-        if ((i+1)%8 == 0)
+
+    ordenar_generando_hilos(datos, cantidad, 5); // 5 es un buen numero para la cantidad de hilos
+        
+    for (int i=0; i<cantidad; i++){
+        printf("%4d \t", datos[i]);
+        if ((i+1)%9 == 0)
             printf("\n");
     }
     printf("\n");
-    free(data);
+
     return 0;
 }
